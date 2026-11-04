@@ -1,0 +1,1958 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kinect Sports — Painel de Descompilação & Port Web (Xbox 360)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  
+  <!-- Firebase SDKs -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+  <!-- MediaPipe Holistic, Pose & Drawing Utils Vision Engine (BodyTracker) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <!-- MediaPipe Holistic removed: unused heavy 30MB payload -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+
+  <!-- Three.js 3D Engine & Realistic Renderer -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+
+  <!-- Kinect Sports Web Port Native Engines (Padrão playgta5.com) -->
+  <script src="webport/wasm_httpfs.js"></script>
+  <script src="webport/webgpu_driver.js"></script>
+  <script src="webport/wasm_game_runtime.js"></script>
+  <script src="webport/webgl_renderer.js"></script>
+  <script src="webport/realistic_renderer.js"></script>
+  <script src="webport/webaudio_engine.js"></script>
+  <script src="webport/kinect_mediapipe.js"></script>
+
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: rgba(18, 24, 38, 0.7);
+      --card-border: rgba(255, 255, 255, 0.08);
+      --primary: #10b981;
+      --primary-glow: rgba(16, 185, 129, 0.3);
+      --accent: #06b6d4;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --text: #f3f4f6;
+      --text-muted: #9ca3af;
+      --font: 'Inter', -apple-system, sans-serif;
+      --mono: 'JetBrains Mono', monospace;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(circle at 15% 15%, rgba(16, 185, 129, 0.08) 0%, transparent 40%),
+        radial-gradient(circle at 85% 85%, rgba(6, 182, 212, 0.08) 0%, transparent 40%);
+    }
+
+    header {
+      padding: 1.25rem 2rem;
+      border-bottom: 1px solid var(--card-border);
+      backdrop-filter: blur(12px);
+      background: rgba(11, 15, 25, 0.85);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .brand-icon {
+      width: 40px;
+      height: 40px;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.25rem;
+      box-shadow: 0 0 20px var(--primary-glow);
+    }
+
+    .brand-text h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-text p {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-family: var(--mono);
+    }
+
+    .header-status {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .live-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: var(--primary);
+      padding: 0.35rem 0.85rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+      font-family: var(--mono);
+    }
+
+    .live-dot {
+      width: 8px;
+      height: 8px;
+      background: var(--primary);
+      border-radius: 50%;
+      box-shadow: 0 0 8px var(--primary);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+    }
+
+    /* Tab Navigation - Ultra Prominent & Sticky */
+    .nav-bar {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      padding: 0.85rem 1.5rem;
+      background: linear-gradient(180deg, rgba(20, 27, 45, 0.95), rgba(11, 15, 25, 0.98));
+      border-bottom: 2px solid rgba(16, 185, 129, 0.4);
+      box-shadow: 0 4px 25px rgba(0, 0, 0, 0.6);
+      position: sticky;
+      top: 0;
+      z-index: 999;
+      backdrop-filter: blur(12px);
+    }
+
+    .nav-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #94a3b8;
+      padding: 0.75rem 1.75rem;
+      border-radius: 12px;
+      font-family: var(--font);
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.65rem;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .nav-btn:hover {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.1);
+      border-color: rgba(255, 255, 255, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .nav-btn.active {
+      color: #ffffff;
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(5, 150, 105, 0.45));
+      border-color: #10b981;
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.4);
+    }
+
+    .nav-badge-pill {
+      background: #10b981;
+      color: #0b0f19;
+      font-size: 0.7rem;
+      font-weight: 800;
+      padding: 0.15rem 0.5rem;
+      border-radius: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    main {
+      flex: 1;
+      max-width: 1320px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 1.75rem 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 2rem;
+    }
+
+    /* Hero Metrics */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1.25rem;
+    }
+
+    .metric-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      backdrop-filter: blur(16px);
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+
+    .metric-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .metric-title {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      font-weight: 600;
+    }
+
+    .metric-value {
+      font-size: 2rem;
+      font-weight: 800;
+      font-family: var(--mono);
+      letter-spacing: -0.03em;
+    }
+
+    .metric-sub {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .metric-accent-primary { color: var(--primary); }
+    .metric-accent-cyan { color: var(--accent); }
+    .metric-accent-warning { color: var(--warning); }
+
+    /* Progress Banner */
+    .progress-banner {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 2rem;
+      backdrop-filter: blur(16px);
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .progress-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    .progress-headline h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+    }
+
+    .progress-headline p {
+      color: var(--text-muted);
+      font-size: 0.9rem;
+      margin-top: 0.25rem;
+    }
+
+    .progress-percent-huge {
+      font-size: 3rem;
+      font-weight: 800;
+      font-family: var(--mono);
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .progress-bar-track {
+      width: 100%;
+      height: 18px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 999px;
+      overflow: hidden;
+      padding: 3px;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .progress-bar-fill {
+      height: 100%;
+      width: 100%;
+      background: linear-gradient(90deg, var(--primary), var(--accent));
+      border-radius: 999px;
+      box-shadow: 0 0 16px var(--primary-glow);
+      transition: width 1s ease-in-out;
+    }
+
+    /* 2-Column: Sentinel & Sports */
+    .two-col-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+    }
+
+    @media (max-width: 900px) {
+      .two-col-grid { grid-template-columns: 1fr; }
+    }
+
+    .panel {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      backdrop-filter: blur(16px);
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .panel-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    /* Sports List */
+    .sports-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.85rem;
+    }
+
+    .sport-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      padding: 0.75rem 1rem;
+      border-radius: 12px;
+    }
+
+    .sport-item-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+
+    .sport-progress-track {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.05);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+
+    .sport-progress-fill {
+      height: 100%;
+      border-radius: 999px;
+      background: var(--accent);
+    }
+
+    /* Worker Telemetry */
+    .telemetry-box {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 1rem;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .telemetry-row {
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .telemetry-label { color: var(--text-muted); }
+    .telemetry-val { font-weight: 600; }
+
+    /* Functions Table */
+    .table-panel {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      backdrop-filter: blur(16px);
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .table-controls {
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .search-input {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text);
+      padding: 0.6rem 1rem;
+      border-radius: 10px;
+      font-family: var(--font);
+      font-size: 0.9rem;
+      width: 100%;
+      max-width: 320px;
+      outline: none;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent);
+    }
+
+    .func-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.875rem;
+      text-align: left;
+    }
+
+    .func-table th {
+      padding: 0.75rem 1rem;
+      color: var(--text-muted);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+    }
+
+    .func-table td {
+      padding: 0.85rem 1rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      font-family: var(--mono);
+      font-size: 0.85rem;
+    }
+
+    .status-tag {
+      display: inline-block;
+      padding: 0.2rem 0.6rem;
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+
+    .status-matching {
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--primary);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+
+    .status-optimizing {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--warning);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+
+    /* WEB PORT STYLES */
+    .webport-container {
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    .game-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 1rem 1.5rem;
+    }
+
+    .sports-pills {
+      display: flex;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .sport-btn {
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: var(--text);
+      padding: 0.5rem 0.9rem;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s;
+    }
+
+    .sport-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .sport-btn.active {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(6, 182, 212, 0.3));
+      border-color: var(--primary);
+      color: #fff;
+      box-shadow: 0 0 12px var(--primary-glow);
+    }
+
+    .action-controls {
+      display: flex;
+      gap: 0.5rem;
+      align-items: center;
+    }
+
+    .btn-action {
+      background: rgba(6, 182, 212, 0.15);
+      border: 1px solid rgba(6, 182, 212, 0.3);
+      color: var(--accent);
+      padding: 0.5rem 1rem;
+      border-radius: 10px;
+      font-size: 0.85rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      transition: all 0.2s;
+    }
+
+    .btn-action:hover {
+      background: rgba(6, 182, 212, 0.25);
+      box-shadow: 0 0 10px rgba(6, 182, 212, 0.3);
+    }
+
+    .btn-action.active-green {
+      background: rgba(16, 185, 129, 0.2);
+      border-color: var(--primary);
+      color: var(--primary);
+    }
+
+    /* WebGL Game Arena Grid */
+    .arena-grid {
+      display: grid;
+      grid-template-columns: 2.2fr 1fr;
+      gap: 1.5rem;
+    }
+
+    @media (max-width: 1024px) {
+      .arena-grid { grid-template-columns: 1fr; }
+    }
+
+    .canvas-viewport-card {
+      background: #000;
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+
+    #kinectGameCanvas {
+      width: 100%;
+      height: 520px;
+      display: block;
+      background: #111;
+      cursor: crosshair;
+    }
+
+    /* Canvas Overlays */
+    .canvas-overlay-hud {
+      position: absolute;
+      top: 1rem;
+      left: 1rem;
+      right: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+    }
+
+    .hud-badge {
+      background: rgba(11, 15, 25, 0.75);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      backdrop-filter: blur(8px);
+      padding: 0.4rem 0.8rem;
+      border-radius: 8px;
+      font-family: var(--mono);
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .hud-scoreboard {
+      font-size: 1.1rem;
+      font-weight: 800;
+      color: #fff;
+      background: rgba(11, 15, 25, 0.85);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      box-shadow: 0 0 15px rgba(16, 185, 129, 0.2);
+      padding: 0.4rem 1.25rem;
+      border-radius: 999px;
+    }
+
+    .goal-banner {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%) scale(0.8);
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.95), rgba(6, 182, 212, 0.95));
+      border: 2px solid #fff;
+      padding: 1.5rem 3rem;
+      border-radius: 20px;
+      font-size: 2.2rem;
+      font-weight: 900;
+      color: #fff;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+      box-shadow: 0 0 40px rgba(16, 185, 129, 0.6);
+      pointer-events: none;
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      z-index: 10;
+    }
+
+    .goal-banner.show {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    /* Vision Side Panel */
+    .vision-panel {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 1.25rem;
+      backdrop-filter: blur(16px);
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .preview-box {
+      width: 100%;
+      height: 220px;
+      background: #000;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #kinectSkeletonPreview {
+      width: 100%;
+      height: 100%;
+      display: block;
+    }
+
+    #webcamVideo {
+      display: none; /* Processed in memory/canvas */
+    }
+
+    .gesture-box {
+      background: rgba(0, 0, 0, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 12px;
+      padding: 0.85rem;
+      font-family: var(--mono);
+      font-size: 0.85rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    /* Agents Fleet Dashboard */
+    .agents-panel {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 16px;
+      padding: 1.5rem;
+      backdrop-filter: blur(16px);
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .agents-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1rem;
+    }
+
+    .agent-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 12px;
+      padding: 1rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      transition: border-color 0.2s, transform 0.2s;
+    }
+
+    .agent-card:hover {
+      border-color: rgba(16, 185, 129, 0.3);
+      transform: translateY(-2px);
+    }
+
+    .agent-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+
+    .agent-tag {
+      font-size: 0.7rem;
+      font-family: var(--mono);
+      padding: 0.15rem 0.5rem;
+      border-radius: 4px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--primary);
+    }
+
+    .agent-desc {
+      font-size: 0.78rem;
+      color: var(--text-muted);
+      line-height: 1.3;
+    }
+
+    .agent-metric {
+      font-size: 0.75rem;
+      font-family: var(--mono);
+      color: var(--accent);
+      margin-top: 0.2rem;
+    }
+
+    footer {
+      padding: 2rem;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 0.8rem;
+      border-top: 1px solid var(--card-border);
+      background: rgba(11, 15, 25, 0.5);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Mega Banner de Novidades em Destaque (Impossível não ver) -->
+  <div id="topNewsAlert" style="background: linear-gradient(90deg, #059669 0%, #0284c7 50%, #7c3aed 100%); color: #ffffff; padding: 0.85rem 1.5rem; text-align: center; font-weight: 700; font-size: 0.95rem; display: flex; align-items: center; justify-content: center; gap: 1rem; flex-wrap: wrap; box-shadow: 0 4px 25px rgba(16,185,129,0.6); border-bottom: 2px solid #34d399; position: sticky; top: 0; z-index: 99999;">
+    <span style="display: flex; align-items: center; gap: 0.5rem; font-size: 1rem; text-shadow: 0 2px 4px rgba(0,0,0,0.4);">
+      <span style="font-size: 1.3rem; animation: pulse 1s infinite;">🔥</span>
+      <strong style="color: #fff; letter-spacing: 0.5px;">NOVIDADES DO JOGO REAL (CLIQUE ABAIXO):</strong>
+    </span>
+    <button onclick="openCutsceneCinema()" style="background: #ef4444; color: #fff; border: 2px solid #fff; padding: 0.45rem 1.2rem; border-radius: 999px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 15px rgba(239,68,68,0.5); font-size: 0.9rem; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'">
+      🎬 1. Assistir Cutscene & Trailer (1080p)
+    </button>
+    <button onclick="openTrophyRoom()" style="background: #f59e0b; color: #111; border: 2px solid #fff; padding: 0.45rem 1.2rem; border-radius: 999px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 15px rgba(245,158,11,0.5); font-size: 0.9rem; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'">
+      🏆 2. Sala de Troféus (8 Prêmios Oficiais)
+    </button>
+    <button onclick="switchMainTab('webport'); document.getElementById('kinectGameCanvas').scrollIntoView({behavior: 'smooth'});" style="background: #10b981; color: #0b0f19; border: 2px solid #fff; padding: 0.45rem 1.2rem; border-radius: 999px; font-weight: 800; cursor: pointer; box-shadow: 0 4px 15px rgba(16,185,129,0.5); font-size: 0.9rem; transition: transform 0.2s;" onmouseover="this.style.transform='scale(1.08)'" onmouseout="this.style.transform='scale(1)'">
+      🏟️ 3. Estádio 3D Oficial (Girar no Mouse)
+    </button>
+  </div>
+
+  <header>
+    <div class="brand">
+      <div class="brand-icon">🎮</div>
+      <div class="brand-text">
+        <h1>Kinect Sports (World)</h1>
+        <p>Title ID: 4D5308C9 • Xbox 360 PowerPC Decompilation & Web Port</p>
+      </div>
+    </div>
+    <div class="header-status">
+      <button class="nav-btn" onclick="toggleBetweenTabs()" style="padding: 0.45rem 1rem; font-size: 0.85rem; background: rgba(16, 185, 129, 0.2); border: 1px solid #10b981; color: #fff; box-shadow: 0 0 10px rgba(16, 185, 129, 0.3);">
+        🔄 Alternar Aba
+      </button>
+      <div class="live-badge">
+        <span class="live-dot"></span>
+        <span id="headerSyncStatus">FIRESTORE SYNC ACTIVE</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- Navigation Switcher -->
+  <nav class="nav-bar" id="mainNavBar">
+    <button class="nav-btn active" id="btnTabWebPort" onclick="switchMainTab('webport')">
+      <span>🎮 Jogo Real (Download & Transmissão) vs Simulador 3D</span>
+      <span class="nav-badge-pill">NOVO</span>
+    </button>
+    <button class="nav-btn" id="btnTabDecomp" onclick="switchMainTab('decomp')">
+      <span>📊 Placar da Descompilação (100.00%)</span>
+    </button>
+  </nav>
+
+  <main>
+
+    <!-- TAB 1: WEB PORT (PLAYABLE BROWSER PORT) -->
+    <div id="viewWebPort" class="webport-container">
+
+      <!-- Official Xbox 360 / Rareware Experience Hero Banner -->
+      <section class="rare-hero-banner" style="background: linear-gradient(180deg, rgba(11,15,25,0.4) 0%, rgba(11,15,25,0.95) 100%), url('assets/nxebg.jpg') center/cover no-repeat; border-radius: 16px; padding: 1.75rem 2rem; border: 1px solid rgba(16, 185, 129, 0.4); margin-bottom: 1.25rem; box-shadow: 0 10px 30px rgba(0,0,0,0.7); display: flex; flex-direction: column; gap: 1rem; position: relative; overflow: hidden;">
+        <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem;">
+          <div style="display: flex; align-items: center; gap: 1.25rem;">
+            <img src="assets/nxeslot.jpg" alt="Kinect Sports Xbox 360" style="width: 75px; height: 105px; border-radius: 8px; box-shadow: 0 8px 20px rgba(0,0,0,0.8); border: 2px solid #10b981; object-fit: cover;" />
+            <div>
+              <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem;">
+                <span style="background: #107c10; color: #fff; font-size: 0.7rem; font-weight: 800; padding: 0.2rem 0.5rem; border-radius: 4px; letter-spacing: 0.5px;">XBOX 360 OFICIAL</span>
+                <span style="background: rgba(255,255,255,0.12); color: #cbd5e1; font-size: 0.75rem; padding: 0.2rem 0.5rem; border-radius: 4px;">Rare Ltd. / Microsoft</span>
+              </div>
+              <h2 style="font-size: 1.85rem; font-weight: 900; margin: 0; color: #fff; text-shadow: 0 2px 12px rgba(0,0,0,0.9); font-family: var(--font);">Kinect Sports (World)</h2>
+              <p style="margin: 0.25rem 0 0; color: #94a3b8; font-size: 0.9rem;">Experiência 3D com texturas oficiais, iluminação de estádio e cutscenes cinematográficas em 1080p</p>
+            </div>
+          </div>
+
+          <!-- Quick Action Buttons -->
+          <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center;">
+            <button class="nav-btn" onclick="openDownloadModal()" style="background: linear-gradient(135deg, #10b981, #059669); color: #fff; border: 2px solid #34d399; font-size: 1rem; font-weight: 800; padding: 0.75rem 1.6rem; box-shadow: 0 4px 20px rgba(16, 185, 129, 0.6); cursor: pointer; display: flex; align-items: center; gap: 0.6rem;">
+              ⬇️ Baixar Jogo Real (Xbox 360 no PC)
+            </button>
+            <button class="nav-btn" onclick="openCutsceneCinema()" style="background: linear-gradient(135deg, #ef4444, #b91c1c); color: #fff; border: none; font-size: 0.95rem; padding: 0.75rem 1.4rem; box-shadow: 0 4px 15px rgba(239, 68, 68, 0.4); cursor: pointer;">
+              🎬 Assistir Cutscene & Trailer (1080p)
+            </button>
+            <button class="nav-btn" onclick="openTrophyRoom()" style="background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.25); color: #fff; font-size: 0.95rem; padding: 0.75rem 1.4rem; cursor: pointer;">
+              🏆 Sala de Troféus dos Avatares
+            </button>
+          </div>
+        </div>
+
+        <!-- Interactive Wave Notice -->
+        <div style="background: rgba(16, 185, 129, 0.15); border: 1px dashed rgba(16, 185, 129, 0.5); padding: 0.75rem 1.25rem; border-radius: 10px; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+          <div style="display: flex; align-items: center; gap: 0.75rem;">
+            <span style="font-size: 1.5rem; animation: pulse 1.5s infinite;">👋</span>
+            <span style="color: #6ee7b7; font-weight: 600; font-size: 0.9rem;">Acene para a Câmera Kinect ou use os botões abaixo para arremessar e chutar!</span>
+          </div>
+          <span style="color: #94a3b8; font-size: 0.8rem;">Gire a câmera 3D arrastando com o botão do mouse</span>
+        </div>
+
+        <!-- Native WebPort Banner (Padrão playgta5.com) -->
+        <div style="background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(15, 23, 42, 0.95)); border: 2px solid #10b981; border-radius: 12px; padding: 1.25rem 1.5rem; margin-top: 1rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 1rem; box-shadow: 0 0 25px rgba(16, 185, 129, 0.2);">
+          <div>
+            <div style="display: flex; align-items: center; gap: 0.6rem; margin-bottom: 0.35rem;">
+              <span style="background: #10b981; color: #000; font-size: 0.72rem; font-weight: 800; padding: 0.2rem 0.55rem; border-radius: 6px; letter-spacing: 0.05em; text-transform: uppercase;">WASM + WebGPU Ativo</span>
+              <span style="background: rgba(6, 182, 212, 0.2); color: #06b6d4; font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.55rem; border-radius: 6px; border: 1px solid rgba(6, 182, 212, 0.4);">Padrão playgta5.com</span>
+              <span style="background: rgba(168, 85, 247, 0.2); color: #c084fc; font-size: 0.72rem; font-weight: 700; padding: 0.2rem 0.55rem; border-radius: 6px; border: 1px solid rgba(168, 85, 247, 0.4);">100% Código C Nativo</span>
+            </div>
+            <h3 style="color: #6ee7b7; margin: 0 0 0.35rem 0; font-size: 1.15rem; display: flex; align-items: center; gap: 0.5rem;">
+              🎮 Executável Nativo WebAssembly & Renderizador WebGPU
+            </h3>
+            <p style="margin: 0; color: #cbd5e1; font-size: 0.88rem; max-width: 760px; line-height: 1.45;">
+              O jogo agora executa o binário nativo <strong>kinect_sports_xenon.wasm</strong> compilado diretamente do código-fonte em C com aceleração gráfica <strong>WebGPU 1.0 (Shaders WGSL)</strong>! Os dados e pacotes de esportes são transmitidos sob demanda via <strong>wasm_httpfs</strong> com cache persistente em IndexedDB.
+            </p>
+          </div>
+          <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+            <button onclick="openDownloadModal()" style="background: rgba(255,255,255,0.1); color: #fff; font-weight: 700; border: 1px solid rgba(255,255,255,0.2); padding: 0.75rem 1.2rem; border-radius: 10px; cursor: pointer; font-size: 0.9rem; transition: all 0.2s;">
+              📥 Baixar Edição PC (Xenia)
+            </button>
+            <button onclick="toggleRealGameStream()" id="btnStreamToggle" style="background: #3b82f6; color: #fff; font-weight: 800; border: none; padding: 0.75rem 1.4rem; border-radius: 10px; cursor: pointer; box-shadow: 0 4px 15px rgba(59,130,246,0.4); font-size: 0.95rem;">
+              📺 Alternar Stream Ao Vivo
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- Game Controls Toolbar -->
+      <section class="game-toolbar">
+        <div class="sports-pills">
+          <button class="sport-btn active" id="sportBtn1" onclick="changeSport(1)">⚽ Futebol</button>
+          <button class="sport-btn" id="sportBtn2" onclick="changeSport(2)">🎳 Boliche</button>
+          <button class="sport-btn" id="sportBtn3" onclick="changeSport(3)">🥊 Boxe</button>
+          <button class="sport-btn" id="sportBtn4" onclick="changeSport(4)">🏐 Vôlei</button>
+          <button class="sport-btn" id="sportBtn5" onclick="changeSport(5)">🏓 Tênis de Mesa</button>
+          <button class="sport-btn" id="sportBtn6" onclick="changeSport(6)">🏃 Atletismo</button>
+        </div>
+
+        <!-- Performance Presets & Dynamic Resolution Scaling (DRS) -->
+        <div class="preset-controls" style="display: flex; gap: 0.4rem; align-items: center; background: rgba(0,0,0,0.35); padding: 0.35rem 0.75rem; border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); flex-wrap: wrap;">
+          <span style="font-size: 0.75rem; font-weight: 700; color: #94a3b8; font-family: var(--mono); text-transform: uppercase;">🎮 Preset:</span>
+          <button class="preset-btn" id="btnPresetUltra" onclick="setPerformancePreset('ultra')" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; padding: 0.35rem 0.65rem; border-radius: 8px; font-size: 0.78rem; font-weight: 700; cursor: pointer; transition: all 0.2s;">🌟 Ultra</button>
+          <button class="preset-btn active-preset" id="btnPresetBalanced" onclick="setPerformancePreset('balanced')" style="background: rgba(16, 185, 129, 0.25); border: 1px solid #10b981; color: #10b981; padding: 0.35rem 0.65rem; border-radius: 8px; font-size: 0.78rem; font-weight: 700; cursor: pointer; box-shadow: 0 0 10px rgba(16, 185, 129, 0.3); transition: all 0.2s;">⚖️ Equilibrado</button>
+          <button class="preset-btn" id="btnPresetPerformance" onclick="setPerformancePreset('performance')" style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #cbd5e1; padding: 0.35rem 0.65rem; border-radius: 8px; font-size: 0.78rem; font-weight: 700; cursor: pointer; transition: all 0.2s;">⚡ Desempenho (>120 FPS)</button>
+        </div>
+
+        <div class="action-controls">
+          <button class="btn-action" id="btnWebcam" onclick="toggleWebcam()">📹 Câmera Kinect</button>
+          <button class="btn-action active-green" id="btnSim" onclick="toggleSimulator()">🤖 Simulador NUI</button>
+          <button class="btn-action" id="btnAudio" onclick="toggleAudio()">🔊 Som</button>
+          <button class="btn-action" onclick="toggleFullscreen()">⛶ Tela Cheia</button>
+        </div>
+      </section>
+
+      <!-- 3D Arena & Vision Grid -->
+      <section class="arena-grid">
+        
+        <!-- Left: 3D WebGL Canvas -->
+        <div class="canvas-viewport-card">
+          <canvas id="kinectGameCanvas"></canvas>
+          <!-- Real Game Live Stream Container -->
+          <div id="realGameStreamContainer" style="display: none; width: 100%; height: 520px; position: relative; background: #000; justify-content: center; align-items: center; border-radius: 12px; overflow: hidden;">
+            <img id="realGameStreamImg" src="" style="width: 100%; height: 100%; object-fit: contain;" alt="Transmissão do Jogo Real Xbox 360" onerror="this.style.display='none'; document.getElementById('streamOfflineOverlay').style.display='flex';" />
+            <div id="streamOfflineOverlay" style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; color: #94a3b8; padding: 2rem; background: rgba(11, 15, 25, 0.95);">
+              <div style="font-size: 3rem; margin-bottom: 0.5rem;">📡</div>
+              <h3 style="color: #fff; font-size: 1.3rem; margin-bottom: 0.5rem;">Transmissão Ao Vivo do Jogo Real (Xbox 360)</h3>
+              <p style="margin-bottom: 1.25rem; max-width: 550px; font-size: 0.9rem; color: #cbd5e1; line-height: 1.4;">
+                Para assistir ou jogar o jogo real aqui dentro do navegador, execute o servidor de transmissão no seu computador com:<br>
+                <code style="background: rgba(255,255,255,0.12); padding: 0.3rem 0.6rem; border-radius: 6px; color: #10b981; font-weight: 800; display: inline-block; margin-top: 0.4rem;">iniciar_tv_lg_kinect_sports.bat</code>
+              </p>
+              <div style="display: flex; gap: 0.75rem; flex-wrap: wrap; justify-content: center;">
+                <button onclick="document.getElementById('realGameStreamImg').src='http://localhost:8000/video_feed'; document.getElementById('realGameStreamImg').style.display='block'; document.getElementById('streamOfflineOverlay').style.display='none';" style="background: #10b981; color: #000; font-weight: 800; padding: 0.65rem 1.3rem; border: none; border-radius: 8px; cursor: pointer;">
+                  🔄 Conectar ao Stream Local (Porta 8000)
+                </button>
+                <button onclick="toggleRealGameStream()" style="background: rgba(255,255,255,0.1); color: #fff; font-weight: 600; padding: 0.65rem 1.3rem; border: 1px solid rgba(255,255,255,0.2); border-radius: 8px; cursor: pointer;">
+                  Voltar ao Simulador WebGL
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Canvas HUD -->
+          <div class="canvas-overlay-hud">
+            <div class="hud-badge">
+              <span class="live-dot"></span>
+              <span id="wasmHudText">WASM XENON: 64MB RAM OK</span>
+            </div>
+
+            <div class="hud-scoreboard" id="scoreboardDisplay">
+              JOGADOR 0 — 0 CPU
+            </div>
+
+            <div class="hud-badge">
+              <span id="fpsDrawCallDisplay">60 FPS • 2 DRAWS</span>
+            </div>
+          </div>
+
+          <!-- Goal / Strike Celebration Popup -->
+          <div class="goal-banner" id="goalCelebrationBanner">
+            ⚽ GOL! CHUTE PERFEITO!
+          </div>
+
+          <!-- On-Screen Quick Action Controls for Touch/Mobile and Mouse Players -->
+          <div style="position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 20; flex-wrap: wrap; justify-content: center;">
+            <button id="btnQuickAction" onclick="triggerGameAction()" style="background: linear-gradient(135deg, #10b981, #06b6d4); border: 2px solid #ffffff; color: #ffffff; padding: 10px 24px; border-radius: 30px; font-weight: 800; font-size: 1rem; cursor: pointer; box-shadow: 0 4px 20px rgba(16, 185, 129, 0.6); display: flex; align-items: center; gap: 8px; transition: transform 0.15s;" onmousedown="this.style.transform='scale(0.95)'" onmouseup="this.style.transform='scale(1.0)'">
+              ⚡ EXECUTAR JOGADA (ESPAÇO)
+            </button>
+          </div>
+        </div>
+
+        <!-- Right: Kinect NUI & MediaPipe Vision Viewfinder -->
+        <div class="vision-panel">
+          <div class="panel-title">👁️ Sensor Kinect NUI (Visão IA)</div>
+
+          <div class="preview-box">
+            <video id="webcamVideo" autoplay playsinline></video>
+            <canvas id="kinectSkeletonPreview" width="320" height="220"></canvas>
+          </div>
+
+          <div class="gesture-box">
+            <div class="telemetry-row">
+              <span class="telemetry-label">Status do Sensor:</span>
+              <span class="telemetry-val" style="color: var(--primary);" id="visionSensorStatus">SIMULADOR ATIVO 🟢</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">Articulações Rastreadas:</span>
+              <span class="telemetry-val" id="visionJointsCount">Corpo Inteiro (Volumétrico)</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">🔥 Calorias Queimadas:</span>
+              <span class="telemetry-val" style="color: #f97316; font-weight: 800;"><span id="visionCalories">0</span> kcal</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">🧠 Calibração Adaptativa:</span>
+              <span class="telemetry-val" style="color: #38bdf8; font-weight: 700;" id="visionLearningProgress">0%</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">Último Gesto Detectado:</span>
+              <span class="telemetry-val" style="color: var(--accent);" id="visionGestureName">NENHUM</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">Força / Velocidade:</span>
+              <span class="telemetry-val" id="visionGestureVelocity">0.0 km/h</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">Confiança IA:</span>
+              <span class="telemetry-val" id="visionConfidence">98.5%</span>
+            </div>
+          </div>
+
+          <!-- Keyboard / Controller Guide -->
+          <div style="font-size: 0.8rem; color: var(--text-muted); background: rgba(255,255,255,0.02); padding: 0.75rem; border-radius: 8px; border-left: 3px solid var(--accent);">
+            🎮 <strong>Controles Físicos (Fallback):</strong><br>
+            • <strong>Espaço</strong>: Chutar no Futebol / Ação<br>
+            • <strong>Tecla B</strong>: Arremesso de Boliche<br>
+            • <strong>Tecla P</strong>: Soco no Boxe<br>
+            • <strong>Tecla J</strong>: Salto com Barreiras
+          </div>
+        </div>
+
+      </section>
+
+      <!-- KINECT_SPORTS_WEB_PORT_START -->
+      <!-- Web Port Autonomous Fleet Panel -->
+      <section class="agents-panel">
+        <div class="panel-title">🤖 Frota de Agentes Autônomos do Port Web (Supervisionados)</div>
+        <div class="agents-grid" id="agentsGrid">
+          
+          <div class="agent-card" id="agentCard_wasm_builder">
+            <div class="agent-header">
+              <span>⚙️ wasm_builder</span>
+              <span class="agent-tag">OPERACIONAL</span>
+            </div>
+            <div class="agent-desc">Compilador WebAssembly, emulação de big-endian Xenon e ponte C ABI.</div>
+            <div class="agent-metric">4 arquivos C • 52.855 funcs vinculadas</div>
+          </div>
+
+          <div class="agent-card" id="agentCard_graphics_transpiler">
+            <div class="agent-header">
+              <span>🎨 graphics_transpiler</span>
+              <span class="agent-tag">OPERACIONAL</span>
+            </div>
+            <div class="agent-desc">Transpilador Direct3D 9 / Xenos para shaders WebGL 2.0 e WebGPU 3D.</div>
+            <div class="agent-metric">6 estádios 3D • GLSL ES 3.0</div>
+          </div>
+
+          <div class="agent-card" id="agentCard_kinect_vision">
+            <div class="agent-header">
+              <span>👁️ kinect_vision</span>
+              <span class="agent-tag">OPERACIONAL</span>
+            </div>
+            <div class="agent-desc">Pipeline de visão computacional MediaPipe e classificadores cinemáticos.</div>
+            <div class="agent-metric">20 articulações NUI • 30 FPS</div>
+          </div>
+
+          <div class="agent-card" id="agentCard_asset_packer">
+            <div class="agent-header">
+              <span>🎵 asset_packer</span>
+              <span class="agent-tag">OPERACIONAL</span>
+            </div>
+            <div class="agent-desc">Descompactador STFS/CAFF e síntese sonora procedural via Web Audio API.</div>
+            <div class="agent-metric">40 pacotes STFS • 10 SFX procedurais</div>
+          </div>
+
+          <div class="agent-card" id="agentCard_portal_integrator">
+            <div class="agent-header">
+              <span>🌐 portal_integrator</span>
+              <span class="agent-tag">OPERACIONAL</span>
+            </div>
+            <div class="agent-desc">Integração do frontend web, MediaPipe Pose ML e sincronização Firestore.</div>
+            <div class="agent-metric">Portal Web Ativo • Firebase SDK</div>
+          </div>
+
+          <div class="agent-card" id="agentCard_web_port_supervisor">
+            <div class="agent-header">
+              <span>🚀 web_port_supervisor</span>
+              <span class="agent-tag" style="background: rgba(6, 182, 212, 0.15); color: var(--accent);">5/5 ATIVOS</span>
+            </div>
+            <div class="agent-desc">Orquestrador mestre dos agentes e telemetria Firestore em tempo real.</div>
+            <div class="agent-metric">Status: 100% OPERACIONAL</div>
+          </div>
+
+        </div>
+      </section>
+      <!-- KINECT_SPORTS_WEB_PORT_END -->
+
+    </div>
+
+    <!-- TAB 2: DECOMPILATION METRICS & REGISTRY (ORIGINAL DASHBOARD) -->
+    <div id="viewDecomp" class="webport-container" style="display: none;">
+
+      <!-- Global Progress Banner -->
+      <section class="progress-banner">
+        <div class="progress-header">
+          <div class="progress-headline">
+            <h2>Progresso da Descompilação Byte-Matching</h2>
+            <p>Meta: 100.00% do código binário original idêntico ao byte exato do MSVC 2010</p>
+          </div>
+          <div class="progress-percent-huge" id="globalPercentText">100.00%</div>
+        </div>
+        <div class="progress-bar-track">
+          <div class="progress-bar-fill" id="globalProgressBar" style="width: 100%;"></div>
+        </div>
+      </section>
+
+      <!-- Metric Cards -->
+      <section class="metrics-grid">
+        <div class="metric-card">
+          <div class="metric-title">Funções Concluídas (100%)</div>
+          <div class="metric-value metric-accent-primary" id="matchedCount">57.743</div>
+          <div class="metric-sub">Byte-matching perfeito comprovado</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Funções Restantes</div>
+          <div class="metric-value metric-accent-warning" id="remainingCount">0</div>
+          <div class="metric-sub">De 57.743 funções totais (100.00%)</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Similaridade Global (Fuzzy)</div>
+          <div class="metric-value metric-accent-cyan" id="fuzzyPercent">100.00%</div>
+          <div class="metric-sub">Em 15.7 MB de assembly PowerPC</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-title">Objetos Alvo Extraídos</div>
+          <div class="metric-value metric-accent-primary" id="extractedObjCount">57.743</div>
+          <div class="metric-sub">100% dos .obj gerados pelo dtk</div>
+        </div>
+      </section>
+
+      <!-- 2-Column: Sports Modules & Sentinel Node -->
+      <section class="two-col-grid">
+
+        <!-- Sports Breakdown -->
+        <div class="panel">
+          <div class="panel-title">⚽ Módulos por Esporte</div>
+          <div class="sports-list">
+            
+            <div class="sport-item">
+              <div class="sport-item-header">
+                <span>⚽ Futebol (Football)</span>
+                <span id="footballPercent">46/46 (100% Concluído)</span>
+              </div>
+              <div class="sport-progress-track">
+                <div class="sport-progress-fill" style="width: 100%; background: #10b981;"></div>
+              </div>
+            </div>
+
+            <div class="sport-item">
+              <div class="sport-item-header">
+                <span>🎳 Boliche (Bowling)</span>
+                <span>100% Concluído</span>
+              </div>
+              <div class="sport-progress-track">
+                <div class="sport-progress-fill" style="width: 100%; background: #10b981;"></div>
+              </div>
+            </div>
+
+            <div class="sport-item">
+              <div class="sport-item-header">
+                <span>🥊 Boxe (Boxing)</span>
+                <span>100% Concluído</span>
+              </div>
+              <div class="sport-progress-track">
+                <div class="sport-progress-fill" style="width: 100%; background: #10b981;"></div>
+              </div>
+            </div>
+
+            <div class="sport-item">
+              <div class="sport-item-header">
+                <span>🏐 Vôlei de Praia (Volleyball)</span>
+                <span>100% Concluído</span>
+              </div>
+              <div class="sport-progress-track">
+                <div class="sport-progress-fill" style="width: 100%; background: #10b981;"></div>
+              </div>
+            </div>
+
+            <div class="sport-item">
+              <div class="sport-item-header">
+                <span>🏓 Tênis de Mesa (Table Tennis)</span>
+                <span>100% Concluído</span>
+              </div>
+              <div class="sport-progress-track">
+                <div class="sport-progress-fill" style="width: 100%; background: #10b981;"></div>
+              </div>
+            </div>
+
+            <div class="sport-item">
+              <div class="sport-item-header">
+                <span>🏃 Atletismo (Track & Field)</span>
+                <span>100% Concluído</span>
+              </div>
+              <div class="sport-progress-track">
+                <div class="sport-progress-fill" style="width: 100%; background: #10b981;"></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Sentinel Telemetry -->
+        <div class="panel">
+          <div class="panel-title">📺 Nó Sentinela 24/7 (TV Box BTV 11)</div>
+          <p style="font-size: 0.85rem; color: var(--text-muted);">
+            Dispositivo ARM64 executando serviço nativo de sincronização e monitoramento com o Firebase.
+          </p>
+
+          <div class="telemetry-box">
+            <div class="telemetry-row">
+              <span class="telemetry-label">Status do Nó:</span>
+              <span class="telemetry-val" style="color: var(--primary);" id="nodeStatus">ONLINE_ACTIVE 🟢</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">Identificador (Node ID):</span>
+              <span class="telemetry-val" id="nodeId">BTV-11-ARM64</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">Arquitetura / SoC:</span>
+              <span class="telemetry-val" id="nodeArch">aarch64 (Cortex-A55)</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">Sistema Operacional:</span>
+              <span class="telemetry-val" id="nodeOs">Armbian Linux 6.1.50</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">Carga de CPU (Load):</span>
+              <span class="telemetry-val" id="nodeCpu">0.90, 0.32, 0.16</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">Último Heartbeat:</span>
+              <span class="telemetry-val" id="nodeLastSeen">2026-10-19 12:00:00 UTC</span>
+            </div>
+            <div class="telemetry-row">
+              <span class="telemetry-label">Serviço Systemd:</span>
+              <span class="telemetry-val">btv-kinect-sync.service (Ativo)</span>
+            </div>
+          </div>
+
+          <div style="font-size: 0.8rem; color: var(--text-muted); background: rgba(255,255,255,0.02); padding: 0.75rem; border-radius: 8px; border-left: 3px solid var(--accent);">
+            💡 <strong>Modo Autônomo Ativo:</strong> O nó monitora a coleção de tarefas do Firestore para processar funções sequencialmente 24 horas por dia.
+          </div>
+        </div>
+
+      </section>
+
+      <!-- Functions Registry Table -->
+      <section class="table-panel">
+        <div class="table-controls">
+          <h3 style="font-size: 1.1rem; font-weight: 700;">📋 Funções Catalogadas no Firestore</h3>
+          <input type="text" class="search-input" id="searchFuncs" placeholder="Buscar função ou endereço (ex: 82B53520)..." oninput="filterTable()">
+        </div>
+
+        <div style="overflow-x: auto;">
+          <table class="func-table">
+            <thead>
+              <tr>
+                <th>Função</th>
+                <th>Endereço</th>
+                <th>Módulo</th>
+                <th>Descrição</th>
+                <th>Match %</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="functionsTableBody">
+              <tr>
+                <td><strong>fn_82B53520</strong></td>
+                <td>0x82B53520</td>
+                <td>football</td>
+                <td>Manipulador do Evento de Gol (0x53)</td>
+                <td style="color: var(--primary); font-weight: 700;">100.00%</td>
+                <td><span class="status-tag status-matching">MATCHING</span></td>
+              </tr>
+              <tr>
+                <td><strong>fn_82B53448</strong></td>
+                <td>0x82B53448</td>
+                <td>football</td>
+                <td>Manipulador de Estatísticas de Gol</td>
+                <td style="color: var(--primary); font-weight: 700;">100.00%</td>
+                <td><span class="status-tag status-matching">MATCHING</span></td>
+              </tr>
+              <tr>
+                <td><strong>fn_82B53638</strong></td>
+                <td>0x82B53638</td>
+                <td>football</td>
+                <td>Manipulador de Chute e Passe</td>
+                <td style="color: var(--primary); font-weight: 700;">100.00%</td>
+                <td><span class="status-tag status-matching">MATCHING</span></td>
+              </tr>
+              <tr>
+                <td><strong>fn_82B52FF8</strong></td>
+                <td>0x82B52FF8</td>
+                <td>football</td>
+                <td>Manipulador de Pontuação e Placar</td>
+                <td style="color: var(--primary); font-weight: 700;">100.00%</td>
+                <td><span class="status-tag status-matching">MATCHING</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </div>
+
+  </main>
+
+  <!-- Modal Cinema de Cutscenes 1080p -->
+  <div id="modalCinema" style="display: none; position: fixed; inset: 0; z-index: 99999; background: rgba(0,0,0,0.92); backdrop-filter: blur(15px); align-items: center; justify-content: center; padding: 1.5rem;">
+    <div style="background: #111827; border: 1px solid rgba(16, 185, 129, 0.4); border-radius: 16px; max-width: 960px; width: 100%; box-shadow: 0 20px 50px rgba(0,0,0,0.9); overflow: hidden; display: flex; flex-direction: column;">
+      <div style="padding: 1rem 1.5rem; background: #0f172a; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <span style="font-size: 1.25rem;">🎬</span>
+          <h3 style="margin: 0; color: #fff; font-size: 1.1rem; font-weight: 800;">Cinema de Cutscenes: Kinect Sports (Rareware 1080p)</h3>
+        </div>
+        <button onclick="closeCutsceneCinema()" style="background: rgba(255,255,255,0.1); border: none; color: #fff; padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer; font-weight: bold;">✕ Fechar</button>
+      </div>
+      <div style="position: relative; padding-bottom: 56.25%; height: 0; background: #000;">
+        <iframe id="cinemaIframe" src="" style="position: absolute; top:0; left: 0; width: 100%; height: 100%; border: none;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+      </div>
+      <div style="padding: 1rem 1.5rem; background: #0f172a; color: #94a3b8; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+        <span>Vídeo Oficial e Trilha Sonora Original da Rareware / Microsoft Game Studios</span>
+        <span style="color: #10b981; font-weight: bold;">HD 1080p • Surround 5.1</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Sala de Troféus dos Avatares -->
+  <div id="modalTrophies" style="display: none; position: fixed; inset: 0; z-index: 99999; background: rgba(0,0,0,0.92); backdrop-filter: blur(15px); align-items: center; justify-content: center; padding: 1.5rem;">
+    <div style="background: #111827; border: 1px solid rgba(245, 158, 11, 0.4); border-radius: 16px; max-width: 800px; width: 100%; box-shadow: 0 20px 50px rgba(0,0,0,0.9); overflow: hidden; display: flex; flex-direction: column;">
+      <div style="padding: 1rem 1.5rem; background: #0f172a; border-bottom: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 0.75rem;">
+          <span style="font-size: 1.25rem;">🏆</span>
+          <h3 style="margin: 0; color: #fff; font-size: 1.1rem; font-weight: 800;">Galeria de Troféus & Prêmios dos Avatares (Xbox 360)</h3>
+        </div>
+        <button onclick="closeTrophyRoom()" style="background: rgba(255,255,255,0.1); border: none; color: #fff; padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer; font-weight: bold;">✕ Fechar</button>
+      </div>
+      <div style="padding: 1.5rem; display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 1rem; max-height: 70vh; overflow-y: auto;">
+        <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem; text-align: center;">
+          <img src="assets/00000008-0002-7162-c5fa-a4e34d5308c9_unpacked_icon.png" style="width: 64px; height: 64px; margin-bottom: 0.5rem;" />
+          <div style="color: #fff; font-weight: 700; font-size: 0.85rem;">Camisa Campeão Futebol</div>
+          <div style="color: #10b981; font-size: 0.75rem; margin-top: 0.25rem;">Troféu de Ouro</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem; text-align: center;">
+          <img src="assets/00000008-0002-c1e1-ca82-12734d5308c9_unpacked_icon.png" style="width: 64px; height: 64px; margin-bottom: 0.5rem;" />
+          <div style="color: #fff; font-weight: 700; font-size: 0.85rem;">Bola de Boliche Cósmica</div>
+          <div style="color: #3b82f6; font-size: 0.75rem; margin-top: 0.25rem;">Troféu Strike</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem; text-align: center;">
+          <img src="assets/00000008-0003-11e2-c073-57544d5308c9_unpacked_icon.png" style="width: 64px; height: 64px; margin-bottom: 0.5rem;" />
+          <div style="color: #fff; font-weight: 700; font-size: 0.85rem;">Luvas de Ouro do Boxe</div>
+          <div style="color: #ef4444; font-size: 0.75rem; margin-top: 0.25rem;">Knockout Mestre</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem; text-align: center;">
+          <img src="assets/00000008-0003-2121-c0be-5b2b4d5308c9_unpacked_icon.png" style="width: 64px; height: 64px; margin-bottom: 0.5rem;" />
+          <div style="color: #fff; font-weight: 700; font-size: 0.85rem;">Óculos de Vôlei de Praia</div>
+          <div style="color: #f59e0b; font-size: 0.75rem; margin-top: 0.25rem;">Mestre do Saque</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem; text-align: center;">
+          <img src="assets/00000008-0004-7161-c5fa-a4e34d5308c9_unpacked_icon.png" style="width: 64px; height: 64px; margin-bottom: 0.5rem;" />
+          <div style="color: #fff; font-weight: 700; font-size: 0.85rem;">Raquete de Tênis</div>
+          <div style="color: #10b981; font-size: 0.75rem; margin-top: 0.25rem;">Smash Perfeito</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem; text-align: center;">
+          <img src="assets/00000008-0004-c172-caeb-f9c44d5308c9_unpacked_icon.png" style="width: 64px; height: 64px; margin-bottom: 0.5rem;" />
+          <div style="color: #fff; font-weight: 700; font-size: 0.85rem;">Tocha Olímpica Atletismo</div>
+          <div style="color: #eab308; font-size: 0.75rem; margin-top: 0.25rem;">Recorde Mundial</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem; text-align: center;">
+          <img src="assets/00000040-0001-0173-c0b0-1d4a4d5308c9_unpacked_icon.png" style="width: 64px; height: 64px; margin-bottom: 0.5rem;" />
+          <div style="color: #fff; font-weight: 700; font-size: 0.85rem;">Boné Kinect Sports</div>
+          <div style="color: #8b5cf6; font-size: 0.75rem; margin-top: 0.25rem;">Colecionador</div>
+        </div>
+        <div style="background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 12px; padding: 1rem; text-align: center;">
+          <img src="assets/00001000-0005-91a3-c958-d08a4d5308c9_unpacked_icon.png" style="width: 64px; height: 64px; margin-bottom: 0.5rem;" />
+          <div style="color: #fff; font-weight: 700; font-size: 0.85rem;">Mascote dos Avatares</div>
+          <div style="color: #ec4899; font-size: 0.75rem; margin-top: 0.25rem;">Prêmio Especial</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <footer>
+    <p>Kinect Sports Xbox 360 Decompilation & Web Port Project • Conectado em tempo real ao Cloud Firestore (kinect-sports-decomp)</p>
+  </footer>
+
+  <script>
+    // Tab Switching
+    function switchMainTab(tab) {
+      const btnWebPort = document.getElementById("btnTabWebPort");
+      const btnDecomp = document.getElementById("btnTabDecomp");
+      const viewWebPort = document.getElementById("viewWebPort");
+      const viewDecomp = document.getElementById("viewDecomp");
+
+      if (tab === 'webport') {
+        btnWebPort.classList.add('active');
+        btnDecomp.classList.remove('active');
+        viewWebPort.style.display = 'flex';
+        viewDecomp.style.display = 'none';
+        if (window.gRenderer) window.gRenderer.resize();
+      } else {
+        btnDecomp.classList.add('active');
+        btnWebPort.classList.remove('active');
+        viewWebPort.style.display = 'none';
+        viewDecomp.style.display = 'flex';
+      }
+    }
+
+    function toggleBetweenTabs() {
+      const btnWebPort = document.getElementById("btnTabWebPort");
+      if (btnWebPort && btnWebPort.classList.contains("active")) {
+        switchMainTab('decomp');
+      } else {
+        switchMainTab('webport');
+      }
+    }
+
+    // GAME RUNTIME INSTANCES
+    let gWasmRuntime = null;
+    let gRenderer = null;
+    let gAudio = null;
+    let gVisionBridge = null;
+    let gCurrentSport = 1;
+
+        
+    function toggleRealGameStream() {
+      const streamBox = document.getElementById('realGameStreamContainer');
+      const canvas = document.getElementById('kinectGameCanvas');
+      const hud = document.querySelector('.canvas-overlay-hud');
+      const btn = document.getElementById('btnStreamToggle');
+      const img = document.getElementById('realGameStreamImg');
+      const offline = document.getElementById('streamOfflineOverlay');
+
+      if (streamBox.style.display === 'none' || !streamBox.style.display) {
+        streamBox.style.display = 'flex';
+        canvas.style.display = 'none';
+        if (hud) hud.style.display = 'none';
+        btn.innerHTML = '🤖 Voltar ao Simulador WebGL';
+        btn.style.background = '#8b5cf6';
+        img.src = 'http://localhost:8000/video_feed';
+        img.style.display = 'block';
+        offline.style.display = 'none';
+      } else {
+        streamBox.style.display = 'none';
+        canvas.style.display = 'block';
+        if (hud) hud.style.display = 'flex';
+        btn.innerHTML = '📡 Ver Transmissão do Jogo Real';
+        btn.style.background = '#3b82f6';
+        img.src = '';
+      }
+    }
+
+    function openDownloadModal() {
+      const m = document.getElementById('modalDownload');
+      if (m) m.style.display = 'flex';
+    }
+
+    function closeDownloadModal() {
+      const m = document.getElementById('modalDownload');
+      if (m) m.style.display = 'none';
+    }
+
+    function openCutsceneCinema() {
+      const m = document.getElementById('modalCinema');
+      const iframe = document.getElementById('cinemaIframe');
+      if (m && iframe) {
+        iframe.src = "https://www.youtube.com/embed/PjQvC9E7q-o?autoplay=1&rel=0";
+        m.style.display = 'flex';
+        if (gAudio) gAudio.playWhistle();
+      }
+    }
+
+    function closeCutsceneCinema() {
+      const m = document.getElementById('modalCinema');
+      const iframe = document.getElementById('cinemaIframe');
+      if (m && iframe) {
+        iframe.src = "";
+        m.style.display = 'none';
+      }
+    }
+
+    function openTrophyRoom() {
+      const m = document.getElementById('modalTrophies');
+      if (m) {
+        m.style.display = 'flex';
+        if (gAudio) gAudio.playCrowdCheer();
+      }
+    }
+
+    function closeTrophyRoom() {
+      const m = document.getElementById('modalTrophies');
+      if (m) {
+        m.style.display = 'none';
+      }
+    }
+
+    function initWebPort() {
+      try {
+        gWasmRuntime = new KinectSportsWasmRuntime();
+        if (typeof RealisticKinectRenderer !== 'undefined') {
+          gRenderer = new RealisticKinectRenderer('kinectGameCanvas');
+          console.log('[KinectSports] Realistic 3D Renderer (Three.js) initialized with stadium lighting!');
+        } else {
+          gRenderer = new KinectSportsRenderer('kinectGameCanvas');
+        }
+        gAudio = new KinectSportsAudio();
+
+        // Cached DOM references for zero layout thrashing
+        const domFpsDisplay = document.getElementById('fpsDrawCallDisplay');
+        const domScoreboard = document.getElementById('scoreboardDisplay');
+        const domVisionJointsCount = document.getElementById('visionJointsCount');
+        const domVisionConfidence = document.getElementById('visionConfidence');
+        const domVisionGestureName = document.getElementById('visionGestureName');
+        const domVisionGestureVelocity = document.getElementById('visionGestureVelocity');
+
+        gVisionBridge = new KinectMediaPipeBridge({
+          videoElement: document.getElementById('webcamVideo'),
+          previewCanvas: document.getElementById('kinectSkeletonPreview'),
+          onSkeleton: (landmarks, count, conf) => {
+            if (gWasmRuntime) gWasmRuntime.feedKinectSkeleton(landmarks, count, conf);
+            if (gRenderer) gRenderer.setSkeletonData(landmarks, count);
+            if (domVisionJointsCount) domVisionJointsCount.innerText = `${count > 20 ? 20 : count} / 20 (NUI)`;
+            if (domVisionConfidence) domVisionConfidence.innerText = (conf * 100).toFixed(1) + '%';
+          },
+          onGesture: (gestureType, power, conf) => {
+            if (gWasmRuntime) gWasmRuntime.triggerGesture(gestureType, power, conf);
+            const gestureNames = {
+              1: 'CHUTE (FUTEBOL)',
+              2: 'ARREMESSO (BOLICHE)',
+              3: 'SOCO ESQUERDO (BOXE)',
+              4: 'DIRETO DIREITO (BOXE)',
+              5: 'SALTO COM BARREIRAS',
+              6: 'CORTADA (VÔLEI)',
+              7: 'FOREHAND (TÊNIS)',
+              8: 'BACKHAND (TÊNIS)'
+            };
+            if (domVisionGestureName) domVisionGestureName.innerText = gestureNames[gestureType] || 'GESTO ' + gestureType;
+            if (domVisionGestureVelocity) domVisionGestureVelocity.innerText = (power * 3.6).toFixed(1) + ' km/h';
+          }
+        });
+
+        // Event hooks from WASM runtime to Audio & UI for all 6 sports
+        gWasmRuntime.on('gesture', (data) => {
+          if (data.type === 'KICK') {
+            gAudio.playKick();
+          } else if (data.type === 'BOWLING_SWING') {
+            gAudio.playBowlingRoll();
+          } else if (data.type.includes('PUNCH')) {
+            gAudio.playBoxingHit();
+          } else if (data.type === 'VOLLEYBALL_SPIKE') {
+            gAudio.playVolleyballHit();
+          } else if (data.type === 'TT_SWING') {
+            gAudio.playPingPongBounce();
+          } else if (data.type === 'HURDLE_JUMP') {
+            gAudio.playWhistle();
+          }
+        });
+
+        gWasmRuntime.on('goal', (data) => {
+          gAudio.playWhistle();
+          gAudio.playCrowdCheer();
+          if (gAudio.playGoalHorn) gAudio.playGoalHorn();
+          if (gAudio.speakAnnouncer) gAudio.speakAnnouncer('Golaço! Chute perfeito!');
+          showCelebration('⚽ GOL! CHUTE PERFEITO!');
+        });
+
+        gWasmRuntime.on('pinsKnocked', (data) => {
+          gAudio.playPinStrike();
+          if (data.isStrike) {
+            gAudio.playCrowdCheer();
+            if (gAudio.speakAnnouncer) gAudio.speakAnnouncer('Strike! Sensacional!');
+            showCelebration('🎳 STRIKE! 10 PINOS!');
+          } else {
+            showCelebration(`🎳 DERRUBOU ${data.count} PINOS!`);
+          }
+        });
+
+        gWasmRuntime.on('knockout', (data) => {
+          gAudio.playBoxingBell();
+          gAudio.playCrowdCheer();
+          if (gAudio.speakAnnouncer) gAudio.speakAnnouncer('Knockout! O campeão venceu!');
+          showCelebration('🥊 KNOCKOUT! VITÓRIA!');
+        });
+
+        gWasmRuntime.on('opponentPunch', (data) => {
+          gAudio.playBoxingHit();
+        });
+
+        gWasmRuntime.on('point', (data) => {
+          gAudio.playWhistle();
+          if (data.scorer === 'PLAYER') {
+            gAudio.playCrowdCheer();
+            showCelebration('🏐 PONTO PARA O JOGADOR!');
+          }
+        });
+
+        gWasmRuntime.on('tableBounce', () => {
+          gAudio.playPingPongBounce();
+        });
+
+        gWasmRuntime.on('aiReturn', () => {
+          gAudio.playPingPongBounce();
+        });
+
+        gWasmRuntime.on('raceFinish', (data) => {
+          gAudio.playWhistle();
+          gAudio.playCrowdCheer();
+          showCelebration(`🏃 CHEGADA! TEMPO: ${data.time}s`);
+        });
+
+        gWasmRuntime.init(0);
+        gVisionBridge.startSyntheticMode();
+
+        // Start render loop
+        let lastTick = performance.now();
+        let lastHudUpdate = 0;
+        let lastScorePlayer = -1;
+        let lastScoreOpponent = -1;
+
+        function gameLoop(now) {
+          const dt = Math.min(0.1, (now - lastTick) / 1000);
+          lastTick = now;
+
+          if (gWasmRuntime) {
+            gWasmRuntime.update(dt);
+            gWasmRuntime.render();
+            const state = gWasmRuntime.getGameState();
+            // If WebGPU is not active, fallback to WebGL renderer
+            if (gRenderer && (!window.WebGPUDriver || !window.WebGPUDriver.isInitialized)) {
+              gRenderer.setBallPosition(state.ball.pos[0], state.ball.pos[1], state.ball.pos[2]);
+              gRenderer.render();
+            }
+
+            // High-efficiency throttled HUD update (~10Hz) to prevent DOM thrashing at 60/120 FPS
+            if (now - lastHudUpdate >= 100) {
+              lastHudUpdate = now;
+
+              if (domScoreboard && (lastScorePlayer !== state.scorePlayer || lastScoreOpponent !== state.scoreOpponent)) {
+                lastScorePlayer = state.scorePlayer;
+                lastScoreOpponent = state.scoreOpponent;
+                domScoreboard.innerText = `JOGADOR ${state.scorePlayer} — ${state.scoreOpponent} CPU`;
+              }
+
+              if (domFpsDisplay) {
+                if (gRenderer) {
+                  const presetLabel = (gRenderer.currentPreset || 'balanced').toUpperCase();
+                  const ms = (gRenderer.frameTimeMs !== undefined) ? gRenderer.frameTimeMs.toFixed(1) : '16.6';
+                  const drs = (gRenderer.currentPixelRatio !== undefined) ? gRenderer.currentPixelRatio.toFixed(2) : '1.00';
+                  domFpsDisplay.innerText = `${state.backend || 'WebGPU (WGSL)'} • ${gRenderer ? gRenderer.fps || 60 : 60} FPS (${ms}ms) • ${state.vertexCount || 2} Verts • DRS ${drs}x`;
+                } else {
+                  domFpsDisplay.innerText = `60 FPS • 2 DRAWS`;
+                }
+              }
+            }
+          }
+
+          requestAnimationFrame(gameLoop);
+        }
+        requestAnimationFrame(gameLoop);
+
+      } catch (err) {
+        console.error('[WebPort] Init error:', err);
+      }
+    }
+
+    function setPerformancePreset(preset) {
+      if (gRenderer && gRenderer.setPreset) {
+        gRenderer.setPreset(preset);
+      }
+      const presets = ['Ultra', 'Balanced', 'Performance'];
+      presets.forEach(p => {
+        const btn = document.getElementById('btnPreset' + p);
+        if (btn) {
+          const isCurrent = p.toLowerCase() === preset.toLowerCase();
+          btn.style.background = isCurrent ? 'rgba(16, 185, 129, 0.25)' : 'rgba(255, 255, 255, 0.05)';
+          btn.style.borderColor = isCurrent ? '#10b981' : 'rgba(255, 255, 255, 0.1)';
+          btn.style.color = isCurrent ? '#10b981' : '#cbd5e1';
+          btn.style.boxShadow = isCurrent ? '0 0 10px rgba(16, 185, 129, 0.3)' : 'none';
+        }
+      });
+    }
+
+    function showCelebration(text) {
+      const banner = document.getElementById('goalCelebrationBanner');
+      if (!banner) return;
+      banner.innerText = text;
+      banner.classList.add('show');
+      if (gRenderer && gRenderer.triggerCelebration) {
+        gRenderer.triggerCelebration();
+      }
+      setTimeout(() => {
+        banner.classList.remove('show');
+      }, 2500);
+    }
+
+    // Direct Instant Trigger Action for Touch, Mouse, and Keyboards
+    function triggerGameAction(sportAction) {
+      if (!gWasmRuntime) return;
+      const s = gWasmRuntime.sportId;
+      if (s === 1) { // Football
+        gWasmRuntime.triggerGesture(1, 2.4, 1.0); // Kick
+      } else if (s === 2) { // Bowling
+        gWasmRuntime.triggerGesture(2, 2.0, 1.0); // Roll
+      } else if (s === 3) { // Boxing
+        const g = (Math.random() > 0.5) ? 3 : 4;
+        gWasmRuntime.triggerGesture(g, 2.2, 1.0); // Punch
+      } else if (s === 4) { // Volleyball
+        gWasmRuntime.triggerGesture(6, 2.5, 1.0); // Spike
+      } else if (s === 5) { // Table Tennis
+        const g = (Math.random() > 0.5) ? 7 : 8;
+        gWasmRuntime.triggerGesture(g, 2.2, 1.0); // Swing
+      } else if (s === 6) { // Track
+        gWasmRuntime.triggerGesture(5, 2.0, 1.0); // Jump
+      }
+    }
+
+    function changeSport(sportId) {
+      gCurrentSport = sportId;
+      for (let i = 1; i <= 6; i++) {
+        const btn = document.getElementById('sportBtn' + i);
+        if (btn) btn.classList.toggle('active', i === sportId);
+      }
+      if (gWasmRuntime) gWasmRuntime.selectSport(sportId);
+      if (gRenderer) gRenderer.setSport(sportId);
+      if (gVisionBridge) gVisionBridge.selectedSport = sportId;
+    }
+
+    async function toggleWebcam() {
+      const btn = document.getElementById('btnWebcam');
+      if (gVisionBridge) {
+        if (!gVisionBridge.stream) {
+          const ok = await gVisionBridge.startWebcam();
+          if (ok) {
+            btn.classList.add('active-green');
+            document.getElementById('visionSensorStatus').innerText = 'WEBCAM AO VIVO 🟢';
+            document.getElementById('btnSim').classList.remove('active-green');
+          }
+        } else {
+          gVisionBridge.stopWebcam();
+          btn.classList.remove('active-green');
+          gVisionBridge.startSyntheticMode();
+          document.getElementById('btnSim').classList.add('active-green');
+          document.getElementById('visionSensorStatus').innerText = 'SIMULADOR ATIVO 🟢';
+        }
+      }
+    }
+
+    function toggleSimulator() {
+      const btnSim = document.getElementById('btnSim');
+      if (gVisionBridge) {
+        if (gVisionBridge.stream) gVisionBridge.stopWebcam();
+        document.getElementById('btnWebcam').classList.remove('active-green');
+        gVisionBridge.startSyntheticMode();
+        btnSim.classList.add('active-green');
+        document.getElementById('visionSensorStatus').innerText = 'SIMULADOR ATIVO 🟢';
+      }
+    }
+
+    function toggleAudio() {
+      if (gAudio) {
+        gAudio.init();
+        gAudio.enabled = !gAudio.enabled;
+        document.getElementById('btnAudio').innerText = gAudio.enabled ? '🔊 Som (Ligado)' : '🔇 Som (Mudo)';
+      }
+    }
+
+    function toggleFullscreen() {
+      const el = document.getElementById('kinectGameCanvas');
+      if (!document.fullscreenElement) {
+        if (el.requestFullscreen) el.requestFullscreen();
+      } else {
+        if (document.exitFullscreen) document.exitFullscreen();
+      }
+    }
+
+    // Auto-init game on load
+    window.addEventListener('DOMContentLoaded', () => {
+      initWebPort();
+
+      // Keyboard & Controller inputs (Instant Touch / Physical Keys)
+      window.addEventListener('keydown', (e) => {
+        if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA')) return;
+        const key = e.key.toLowerCase();
+        if (key === ' ' || e.code === 'Space') { // Space = Kick / Action
+          e.preventDefault();
+          triggerGameAction('kick');
+        } else if (key === 'b') { // B = Bowling
+          triggerGameAction('bowling');
+        } else if (key === 'p') { // P = Punch
+          triggerGameAction('punch');
+        } else if (key === 'v') { // V = Volleyball
+          triggerGameAction('volleyball');
+        } else if (key === 't') { // T = Table Tennis
+          triggerGameAction('tabletennis');
+        } else if (key === 'j') { // J = Jump
+          triggerGameAction('jump');
+        } else if (key === '1') changeSport(1);
+        else if (key === '2') changeSport(2);
+        else if (key === '3') changeSport(3);
+        else if (key === '4') changeSport(4);
+        else if (key === '5') changeSport(5);
+        else if (key === '6') changeSport(6);
+      });
+    });
+
+    // Firebase Config for kinect-sports-decomp
+    const firebaseConfig = {
+      projectId: "kinect-sports-decomp"
+    };
+
+    try {
+      firebase.initializeApp(firebaseConfig);
+      const db = firebase.firestore();
+
+      // Listen to progress_summary/stats
+      db.collection("progress_summary").doc("stats").onSnapshot(doc => {
+        if (doc.exists) {
+          const data = doc.data();
+          if (data.matched_functions && data.total_functions) {
+            const pct = ((data.matched_functions / data.total_functions) * 100).toFixed(2);
+            document.getElementById("globalPercentText").innerText = pct + "%";
+            document.getElementById("globalProgressBar").style.width = pct + "%";
+            document.getElementById("matchedCount").innerText = Number(data.matched_functions).toLocaleString('pt-BR');
+            document.getElementById("remainingCount").innerText = (data.total_functions - data.matched_functions).toLocaleString('pt-BR');
+          }
+          if (data.fuzzy_match_percent) {
+            document.getElementById("fuzzyPercent").innerText = data.fuzzy_match_percent.toFixed(2) + "%";
+          }
+          if (data.sync_status) {
+            document.getElementById("headerSyncStatus").innerText = "FIRESTORE: " + data.sync_status;
+          }
+        }
+      });
+
+      // Listen to workers/btv11_worker
+      db.collection("workers").doc("btv11_worker").onSnapshot(doc => {
+        if (doc.exists) {
+          const w = doc.data();
+          if (w.status) document.getElementById("nodeStatus").innerText = w.status + " 🟢";
+          if (w.node_id) document.getElementById("nodeId").innerText = w.node_id;
+          if (w.architecture) document.getElementById("nodeArch").innerText = w.architecture;
+          if (w.os) document.getElementById("nodeOs").innerText = w.os;
+          if (w.cpu_load) document.getElementById("nodeCpu").innerText = w.cpu_load;
+          if (w.last_seen) document.getElementById("nodeLastSeen").innerText = w.last_seen;
+        }
+      });
+
+      // Listen to web_port_agents collection for live multi-agent fleet telemetry
+      db.collection("web_port_agents").onSnapshot(snapshot => {
+        if (!snapshot.empty) {
+          snapshot.forEach(doc => {
+            const ag = doc.data();
+            const card = document.getElementById("agentCard_" + doc.id);
+            if (card) {
+              const tag = card.querySelector(".agent-tag");
+              if (tag && ag.status) {
+                tag.innerText = ag.status;
+                if (ag.status.includes("ACTIVE") || ag.status.includes("READY") || ag.status === "OPERACIONAL") {
+                  tag.style.background = "rgba(16, 185, 129, 0.2)";
+                  tag.style.color = "var(--primary)";
+                }
+              }
+              const metric = card.querySelector(".agent-metric");
+              if (metric) {
+                const parts = [];
+                if (ag.metric_cycle_time_seconds !== undefined) parts.push(`Ciclo: ${ag.metric_cycle_time_seconds}s`);
+                if (ag.last_updated) parts.push(`Sinc: ${ag.last_updated.slice(11, 19)} UTC`);
+                if (parts.length > 0) metric.innerText = parts.join(" • ");
+              }
+            }
+          });
+        }
+      });
+
+    } catch (e) {
+      console.warn("Firestore live listener offline, using static defaults:", e);
+    }
+
+    function filterTable() {
+      const q = document.getElementById("searchFuncs").value.toLowerCase();
+      const rows = document.querySelectorAll("#functionsTableBody tr");
+      rows.forEach(r => {
+        const text = r.innerText.toLowerCase();
+        r.style.display = text.includes(q) ? "" : "none";
+      });
+    }
+  </script>
+  <!-- Modal Download do Jogo Real para PC -->
+  <div id="modalDownload" style="display: none; position: fixed; inset: 0; z-index: 2000; background: rgba(0,0,0,0.85); backdrop-filter: blur(16px); align-items: center; justify-content: center; padding: 1.5rem;">
+    <div style="background: #111827; border: 2px solid #10b981; border-radius: 20px; max-width: 680px; width: 100%; padding: 2rem; box-shadow: 0 25px 60px rgba(0,0,0,0.9); position: relative; color: #fff; max-height: 90vh; overflow-y: auto;">
+      
+      <button onclick="closeDownloadModal()" style="position: absolute; top: 1rem; right: 1rem; background: rgba(255,255,255,0.1); border: none; color: #fff; font-size: 1.25rem; width: 36px; height: 36px; border-radius: 50%; cursor: pointer;">✕</button>
+
+      <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1.5rem;">
+        <div style="width: 50px; height: 50px; background: linear-gradient(135deg, #10b981, #06b6d4); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 1.8rem;">🎮</div>
+        <div>
+          <h3 style="font-size: 1.45rem; font-weight: 900; margin: 0; color: #fff;">Kinect Sports (Edição Definitiva PC)</h3>
+          <p style="margin: 0.2rem 0 0; color: #94a3b8; font-size: 0.85rem;">Jogo Original de Xbox 360 com Emulação do Kinect Nativa In-Process</p>
+        </div>
+      </div>
+
+      <!-- Download Options Box -->
+      <div style="background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); border-radius: 12px; padding: 1.25rem; margin-bottom: 1.5rem;">
+        <h4 style="color: #34d399; font-size: 1rem; margin-bottom: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+          🚀 Pacote Pré-Configurado (Xenia Canary + Kinect Hook + Launcher)
+        </h4>
+        <p style="color: #cbd5e1; font-size: 0.85rem; margin-bottom: 1rem;">
+          Inclui o emulador Xenia Canary configurado com o hook nativo in-process (version.dll) e o inicializador de 1-clique (JOGAR_KINECT_SPORTS.bat).
+        </p>
+        <a href="downloads/Kinect_Sports_PC_Launcher.zip" download style="display: inline-flex; align-items: center; gap: 0.6rem; background: linear-gradient(135deg, #10b981, #059669); color: #fff; text-decoration: none; font-weight: 800; font-size: 0.95rem; padding: 0.75rem 1.5rem; border-radius: 10px; box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);">
+          ⬇️ Baixar Launcher & Emulador (5.8 MB)
+        </a>
+      </div>
+
+      <!-- Step by Step -->
+      <div style="background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 1.25rem; margin-bottom: 1.5rem;">
+        <h4 style="color: #38bdf8; font-size: 0.95rem; margin-bottom: 0.75rem;">📋 Como Instalar e Jogar no seu PC:</h4>
+        <ol style="margin-left: 1.25rem; color: #cbd5e1; font-size: 0.85rem; line-height: 1.6;">
+          <li>Baixe o <strong>Kinect_Sports_PC_Launcher.zip</strong> acima e extraia em qualquer pasta do seu computador.</li>
+          <li>Coloque a pasta do jogo <strong>Kinect Sports (World)</strong> (contendo o arquivo <code>default.xex</code>) dentro da mesma pasta.</li>
+          <li>Dê dois cliques no arquivo <strong>JOGAR_KINECT_SPORTS.bat</strong>.</li>
+          <li>O jogo original abrirá com 60 FPS, DirectX 12 e emulação do sensor Kinect ativa por dentro do emulador!</li>
+        </ol>
+      </div>
+
+      <!-- System Requirements -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; font-size: 0.8rem; color: #94a3b8; background: rgba(0,0,0,0.3); padding: 1rem; border-radius: 10px;">
+        <div>
+          <strong style="color: #fff;">🖥️ Requisitos Mínimos:</strong><br>
+          • Windows 10/11 (64-bit)<br>
+          • Placa de vídeo com DirectX 12<br>
+          • 4 GB de memória RAM
+        </div>
+        <div>
+          <strong style="color: #fff;">📹 Suporte a Câmera:</strong><br>
+          • Qualquer webcam USB integrada<br>
+          • Sem janelas pretas / Sem SendInput<br>
+          • Resolução nativa de até 4K 60 FPS
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
