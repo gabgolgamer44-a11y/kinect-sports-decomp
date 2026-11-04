@@ -263,9 +263,16 @@
       grassTexture.wrapS = THREE.ClampToEdgeWrapping;
       grassTexture.wrapT = THREE.ClampToEdgeWrapping;
 
+      const textureLoader = new THREE.TextureLoader();
+      const authenticTurfTex = textureLoader.load('assets/game_textures/grass_turf.png', (t) => {
+        t.wrapS = THREE.RepeatWrapping;
+        t.wrapT = THREE.RepeatWrapping;
+        t.repeat.set(12, 20);
+      });
+
       const pitchMat = new THREE.MeshStandardMaterial({
-        map: grassTexture,
-        roughness: 0.8,
+        map: authenticTurfTex || grassTexture,
+        roughness: 0.75,
         metalness: 0.1
       });
       const pitch = new THREE.Mesh(pitchGeo, pitchMat);
@@ -318,6 +325,19 @@
       boardRight.position.set(18, 0.6, 15);
       group.add(boardRight);
 
+      // Authentic Rare Kinect Sports Golden Bullseye Targets
+      const targetTex = textureLoader.load('assets/game_textures/football_target_gold.png');
+      const targetMat = new THREE.MeshBasicMaterial({ map: targetTex, transparent: true, side: THREE.DoubleSide });
+      const targetGeo = new THREE.CircleGeometry(0.55, 32);
+
+      const targetTopLeft = new THREE.Mesh(targetGeo, targetMat);
+      targetTopLeft.position.set(-2.6, 1.85, goalZ + 0.1);
+      group.add(targetTopLeft);
+
+      const targetTopRight = new THREE.Mesh(targetGeo, targetMat);
+      targetTopRight.position.set(2.6, 1.85, goalZ + 0.1);
+      group.add(targetTopRight);
+
             // 3D Animated Goalkeeper
       this.goalkeeper = new THREE.Group();
       this.goalkeeper.position.set(0, 0, 24.2);
@@ -367,32 +387,17 @@
     buildBowlingArena() {
       const group = new THREE.Group();
 
-      // Polished Maple Wood Lane
-      const laneCanvas = document.createElement('canvas');
-      laneCanvas.width = 256;
-      laneCanvas.height = 1024;
-      const lctx = laneCanvas.getContext('2d');
-      // Maple wood boards
-      for (let x = 0; x < 256; x += 16) {
-        lctx.fillStyle = (x % 32 === 0) ? '#e6af74' : '#f0be86';
-        lctx.fillRect(x, 0, 16, 1024);
-      }
-      // Arrows on lane
-      lctx.fillStyle = '#613b11';
-      for (let i = -3; i <= 3; i++) {
-        const ax = 128 + i * 28;
-        lctx.beginPath();
-        lctx.moveTo(ax, 700);
-        lctx.lineTo(ax - 10, 730);
-        lctx.lineTo(ax + 10, 730);
-        lctx.fill();
-      }
-
-      const laneTex = new THREE.CanvasTexture(laneCanvas);
+      // Authentic Microsoft/Rare High-Gloss Wood Bowling Lane
+      const textureLoader = new THREE.TextureLoader();
+      const authenticWoodTex = textureLoader.load('assets/game_textures/bowling_wood_floor.png', (t) => {
+        t.wrapS = THREE.RepeatWrapping;
+        t.wrapT = THREE.RepeatWrapping;
+        t.repeat.set(1, 4);
+      });
       const laneMat = new THREE.MeshStandardMaterial({
-        map: laneTex,
-        roughness: 0.15, // Shiny reflection
-        metalness: 0.05
+        map: authenticWoodTex,
+        roughness: 0.12, // Pristine lacquer reflection
+        metalness: 0.08
       });
       const lane = new THREE.Mesh(new THREE.PlaneGeometry(2.1, 24), laneMat);
       lane.rotation.x = -Math.PI / 2;
@@ -460,12 +465,27 @@
     // ==========================================
     buildBoxingArena() {
       const group = new THREE.Group();
-      // Blue Canvas Ring Mat
-      const canvasMat = new THREE.MeshStandardMaterial({ color: 0x1d4ed8, roughness: 0.7 });
+      // Authentic Microsoft/Rare Boxing Ring Mat & Apron
+      const textureLoader = new THREE.TextureLoader();
+      const ringRedTex = textureLoader.load('assets/game_textures/boxing_ring_red.png', (t) => {
+        t.wrapS = THREE.RepeatWrapping;
+        t.wrapT = THREE.RepeatWrapping;
+        t.repeat.set(2, 2);
+      });
+      const canvasMat = new THREE.MeshStandardMaterial({ map: ringRedTex, roughness: 0.65 });
       const ringMat = new THREE.Mesh(new THREE.BoxGeometry(8, 0.8, 8), canvasMat);
       ringMat.position.set(0, 0.4, 7);
       ringMat.receiveShadow = true;
       group.add(ringMat);
+
+      // Authentic Stadium Crowd Billboard Backdrop
+      const crowdTex = textureLoader.load('assets/game_textures/boxing_crowd_arena.png');
+      const crowdBackdrop = new THREE.Mesh(
+        new THREE.PlaneGeometry(16, 6),
+        new THREE.MeshBasicMaterial({ map: crowdTex, transparent: true, opacity: 0.9 })
+      );
+      crowdBackdrop.position.set(0, 4, 12.5);
+      group.add(crowdBackdrop);
 
       // 4 Corner Posts (Red, Blue, White)
       const postGeo = new THREE.CylinderGeometry(0.1, 0.1, 2.4, 16);
@@ -606,13 +626,23 @@
       track.receiveShadow = true;
       group.add(track);
 
-      // Hurdles along track
+      // Hurdles along track with authentic Rare UI textures
+      const textureLoader = new THREE.TextureLoader();
       const hurdleMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, metalness: 0.5 });
+      const bannerTex = textureLoader.load('assets/game_textures/athletics_hurdles_ui.png');
+      const bannerMat = new THREE.MeshBasicMaterial({ map: bannerTex, transparent: true });
+
       for (let z = 12; z <= 50; z += 12) {
         const hurdle = new THREE.Mesh(new THREE.BoxGeometry(6, 0.9, 0.08), hurdleMat);
         hurdle.position.set(0, 0.45, z);
         hurdle.castShadow = true;
         group.add(hurdle);
+
+        // Side sponsor sign
+        const sign = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.6), bannerMat);
+        sign.position.set(3.4, 0.8, z);
+        sign.rotation.y = -Math.PI / 2;
+        group.add(sign);
       }
 
       return group;
@@ -700,8 +730,11 @@
       this.avatarGroup = new THREE.Group();
       this.skeletonGroup.add(this.avatarGroup);
 
-      const avatarJerseyMat = new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.35 });
-      const avatarSkinMat = new THREE.MeshStandardMaterial({ color: 0xfcd34d, roughness: 0.5 });
+      const textureLoader = new THREE.TextureLoader();
+      const authenticSkinTex = textureLoader.load('assets/game_textures/avatar_skin_tone.png');
+      const authenticJerseyTex = textureLoader.load('assets/game_textures/avatar_jersey_blue.png');
+      const avatarJerseyMat = new THREE.MeshStandardMaterial({ map: authenticJerseyTex, roughness: 0.45 });
+      const avatarSkinMat = new THREE.MeshStandardMaterial({ map: authenticSkinTex, roughness: 0.55 });
       const avatarShortsMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.5 });
       const avatarShoeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 });
 
