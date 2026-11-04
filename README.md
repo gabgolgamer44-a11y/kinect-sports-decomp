@@ -7,13 +7,12 @@
 [![Platform: Xbox 360 / Windows / WebAssembly](https://img.shields.io/badge/Platforms-Xbox%20360%20%7C%20Windows%20x64%20%7C%20WASM64-green.svg)](#)
 [![Graphics: WebGPU / DirectX 9](https://img.shields.io/badge/Graphics-WebGPU%20(WGSL)%20%7C%20Direct3D%209-orange.svg)](#)
 [![Vision: MediaPipe AI](https://img.shields.io/badge/Computer%20Vision-MediaPipe%20Pose%20(Zero--Keypress)-emerald.svg)](#)
-[![Deployment: Firebase Hosting](https://img.shields.io/badge/Live%20Demo-Firebase%20Hosting-amber.svg)](https://kinect-sports-decomp.web.app)
 
 *A clean-room reverse engineering, automated binary decompilation, and modern hardware-accelerated runtime framework for Rare Ltd. / Microsoft's landmark motion-controlled title **Kinect Sports** (Title ID: `4D5308C9`).*
 
 ---
 
-[🌐 Live Interactive Portal](https://kinect-sports-decomp.web.app) • [📖 Architecture Specification](#-system-architecture) • [🚀 PC In-Process Hook](#-pc-native-edition-x64-in-process-hook) • [⚡ WebGPU & WASM Runtime](#-webassembly--webgpu-subsystem)
+[📖 Architecture Specification](#-system-architecture) • [🚀 PC In-Process Hook](#-pc-native-edition-x64-in-process-hook) • [⚡ WebGPU & WASM Runtime](#-webassembly--webgpu-subsystem)
 
 </div>
 
