@@ -1,6 +1,6 @@
 /**
  * Kinect Sports WebGPU Native Graphics Driver (Padrão playgta5.com)
- * High-performance WGSL Shader Pipeline & Direct WASM Memory Buffer Rendering
+ * High-performance WGSL Shader Pipeline, Original Texture Sampling & WASM Direct Memory Rendering
  * Title ID: 4D5308C9 - Xbox 360 Decompilation Web Port
  */
 
@@ -12,14 +12,16 @@
             projMatrix : mat4x4<f32>,
             viewMatrix : mat4x4<f32>,
             lightPos   : vec3<f32>,
-            _pad0      : f32,
+            hasTexture : f32,
             lightColor : vec4<f32>,
             ambient    : vec4<f32>,
             camPos     : vec3<f32>,
-            _pad1      : f32,
+            time       : f32,
         };
 
         @group(0) @binding(0) var<uniform> uniforms : Uniforms;
+        @group(0) @binding(1) var u_sampler  : sampler;
+        @group(0) @binding(2) var u_texture  : texture_2d<f32>;
 
         struct VertexInput {
             @location(0) position : vec3<f32>,
@@ -55,19 +57,26 @@
             let V = normalize(uniforms.camPos - in.world_pos);
             let H = normalize(L + V);
 
-            // Diffuse
+            // Diffuse Lambertian
             let diff = max(dot(N, L), 0.0);
             let diffuse = diff * uniforms.lightColor.rgb;
 
-            // Specular (Blinn-Phong)
+            // Specular Blinn-Phong
             let spec = pow(max(dot(N, H), 0.0), 32.0);
-            let specular = spec * uniforms.lightColor.rgb * 0.4;
+            let specular = spec * uniforms.lightColor.rgb * 0.35;
 
-            // Final color
+            // Ambient + Directional
             let lighting = uniforms.ambient.rgb + diffuse + specular;
-            let final_rgb = in.color.rgb * lighting;
 
-            return vec4<f32>(final_rgb, in.color.a);
+            // Sample original texture if available
+            var baseColor = in.color;
+            if (uniforms.hasTexture > 0.5) {
+                let texColor = textureSample(u_texture, u_sampler, in.uv);
+                baseColor = vec4<f32>(baseColor.rgb * texColor.rgb, baseColor.a * texColor.a);
+            }
+
+            let final_rgb = baseColor.rgb * lighting;
+            return vec4<f32>(final_rgb, baseColor.a);
         }
     `;
 
@@ -86,12 +95,17 @@
             this.isInitialized = false;
             this.adapterInfo = "Buscando Adaptador...";
             
-            this.maxVertices = 32768;
+            this.maxVertices = 65536;
             this.vertexStride = 48; // 3 pos + 3 norm + 2 uv + 4 color = 12 floats * 4 bytes = 48 bytes
             
+            this.defaultTexture = null;
+            this.defaultSampler = null;
+            this.activeTexture = null;
+            this.loadedTextures = {};
+
             this.camera = {
-                eye: [0.0, 3.5, -4.5],
-                target: [0.0, 1.0, 6.0],
+                eye: [0.0, 3.8, -5.2],
+                target: [0.0, 1.2, 5.5],
                 fov: 60.0 * Math.PI / 180.0
             };
         }
@@ -99,7 +113,7 @@
         async init(canvas) {
             this.canvas = canvas;
             if (!navigator.gpu) {
-                console.warn('[WebGPU] navigator.gpu não disponível neste navegador. Ativando fallback WebGL.');
+                console.warn('[WebGPU] navigator.gpu não disponível neste navegador. Fallback ativado.');
                 this.isSupported = false;
                 return false;
             }
@@ -110,7 +124,6 @@
                 });
 
                 if (!this.adapter) {
-                    console.warn('[WebGPU] Nenhum adaptador WebGPU de alto desempenho encontrado.');
                     this.isSupported = false;
                     return false;
                 }
@@ -133,31 +146,65 @@
 
                 // Compile WGSL Shaders
                 const shaderModule = this.device.createShaderModule({
-                    label: 'KinectSports_WGSL_Module',
+                    label: 'KinectSports_WGSL_Advanced_Module',
                     code: WGSL_SHADER_SOURCE
                 });
 
-                // Uniform Buffer (Proj, View, Light, Ambient, CamPos) -> ~256 bytes
+                // Create Default 2x2 White Texture & Sampler
+                this.defaultSampler = this.device.createSampler({
+                    magFilter: 'linear',
+                    minFilter: 'linear',
+                    addressModeU: 'repeat',
+                    addressModeV: 'repeat'
+                });
+
+                this.defaultTexture = this.device.createTexture({
+                    size: [2, 2, 1],
+                    format: 'rgba8unorm',
+                    usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST
+                });
+
+                const whitePixels = new Uint8Array([
+                    255, 255, 255, 255,  255, 255, 255, 255,
+                    255, 255, 255, 255,  255, 255, 255, 255
+                ]);
+                this.device.queue.writeTexture(
+                    { texture: this.defaultTexture },
+                    whitePixels,
+                    { bytesPerRow: 8, rowsPerImage: 2 },
+                    [2, 2, 1]
+                );
+
+                this.activeTexture = this.defaultTexture;
+
+                // Uniform Buffer
                 this.uniformBuffer = this.device.createBuffer({
                     size: 256,
                     usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST
                 });
 
                 const bindGroupLayout = this.device.createBindGroupLayout({
-                    entries: [{
-                        binding: 0,
-                        visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
-                        buffer: { type: 'uniform' }
-                    }]
+                    entries: [
+                        {
+                            binding: 0,
+                            visibility: GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+                            buffer: { type: 'uniform' }
+                        },
+                        {
+                            binding: 1,
+                            visibility: GPUShaderStage.FRAGMENT,
+                            sampler: { type: 'filtering' }
+                        },
+                        {
+                            binding: 2,
+                            visibility: GPUShaderStage.FRAGMENT,
+                            texture: { sampleType: 'float' }
+                        }
+                    ]
                 });
 
-                this.uniformBindGroup = this.device.createBindGroup({
-                    layout: bindGroupLayout,
-                    entries: [{
-                        binding: 0,
-                        resource: { buffer: this.uniformBuffer }
-                    }]
-                });
+                this.bindGroupLayout = bindGroupLayout;
+                this.updateBindGroup();
 
                 // Vertex Buffer
                 this.vertexBuffer = this.device.createBuffer({
@@ -168,7 +215,7 @@
                 // Depth Texture
                 this.createDepthTexture();
 
-                // Pipeline
+                // Render Pipeline
                 const pipelineLayout = this.device.createPipelineLayout({
                     bindGroupLayouts: [bindGroupLayout]
                 });
@@ -206,12 +253,70 @@
 
                 this.isSupported = true;
                 this.isInitialized = true;
-                console.log('[WebGPU] Hardware-accelerated WebGPU 1.0 Pipeline initialized com sucesso!');
+                console.log('[WebGPU] Hardware-accelerated WebGPU 1.0 Pipeline initialized com texturização nativa!');
+                
+                // Load original game textures asynchronously
+                this.loadGameTextures();
+
                 return true;
             } catch (err) {
                 console.error('[WebGPU] Erro ao inicializar WebGPU:', err);
                 this.isSupported = false;
                 return false;
+            }
+        }
+
+        updateBindGroup() {
+            if (!this.device || !this.bindGroupLayout) return;
+            this.uniformBindGroup = this.device.createBindGroup({
+                layout: this.bindGroupLayout,
+                entries: [
+                    { binding: 0, resource: { buffer: this.uniformBuffer } },
+                    { binding: 1, resource: this.defaultSampler },
+                    { binding: 2, resource: this.activeTexture.createView() }
+                ]
+            });
+        }
+
+        async loadGameTextures() {
+            const texList = [
+                { id: 'grass', url: 'assets/game_textures/grass_turf.png' },
+                { id: 'target', url: 'assets/game_textures/football_target_gold.png' },
+                { id: 'banner_blue', url: 'assets/game_textures/stadium_banner_blue.png' },
+                { id: 'banner_red', url: 'assets/game_textures/stadium_banner_red.png' }
+            ];
+
+            for (const item of texList) {
+                try {
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    img.src = item.url;
+                    await img.decode();
+
+                    const bitmap = await createImageBitmap(img);
+                    const texture = this.device.createTexture({
+                        size: [bitmap.width, bitmap.height, 1],
+                        format: 'rgba8unorm',
+                        usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT
+                    });
+
+                    this.device.queue.copyExternalImageToTexture(
+                        { source: bitmap },
+                        { texture: texture },
+                        [bitmap.width, bitmap.height]
+                    );
+
+                    this.loadedTextures[item.id] = texture;
+                    console.log(`[WebGPU] Textura original carregada: ${item.id} (${bitmap.width}x${bitmap.height})`);
+                } catch (e) {
+                    // Ignore texture load fail
+                }
+            }
+
+            // Set grass as active texture if available
+            if (this.loadedTextures['grass']) {
+                this.activeTexture = this.loadedTextures['grass'];
+                this.updateBindGroup();
             }
         }
 
@@ -236,7 +341,7 @@
 
         updateUniforms() {
             const aspect = (this.canvas.width || 1280) / (this.canvas.height || 720);
-            const proj = this.perspective(this.camera.fov, aspect, 0.1, 100.0);
+            const proj = this.perspective(this.camera.fov, aspect, 0.1, 150.0);
             const view = this.lookAt(this.camera.eye, this.camera.target, [0, 1, 0]);
 
             const uniformData = new Float32Array(64);
@@ -244,13 +349,17 @@
             uniformData.set(view, 16);  // 16 floats (16..31)
             
             // lightPos
-            uniformData[32] = 5.0; uniformData[33] = 12.0; uniformData[34] = 0.0; uniformData[35] = 0.0;
+            uniformData[32] = 8.0; uniformData[33] = 16.0; uniformData[34] = 4.0;
+            // hasTexture flag
+            uniformData[35] = (this.activeTexture !== this.defaultTexture) ? 1.0 : 0.0;
             // lightColor
             uniformData[36] = 1.0; uniformData[37] = 0.98; uniformData[38] = 0.95; uniformData[39] = 1.0;
             // ambient
-            uniformData[40] = 0.35; uniformData[41] = 0.38; uniformData[42] = 0.42; uniformData[43] = 1.0;
+            uniformData[40] = 0.42; uniformData[41] = 0.45; uniformData[42] = 0.48; uniformData[43] = 1.0;
             // camPos
-            uniformData[44] = this.camera.eye[0]; uniformData[45] = this.camera.eye[1]; uniformData[46] = this.camera.eye[2]; uniformData[47] = 0.0;
+            uniformData[44] = this.camera.eye[0]; uniformData[45] = this.camera.eye[1]; uniformData[46] = this.camera.eye[2];
+            // time
+            uniformData[47] = performance.now() / 1000.0;
 
             this.device.queue.writeBuffer(this.uniformBuffer, 0, uniformData.buffer, 0, 256);
         }
@@ -275,7 +384,7 @@
                 const renderPass = commandEncoder.beginRenderPass({
                     colorAttachments: [{
                         view: textureView,
-                        clearValue: { r: 0.05, g: 0.08, b: 0.14, a: 1.0 },
+                        clearValue: { r: 0.04, g: 0.07, b: 0.12, a: 1.0 },
                         loadOp: 'clear',
                         storeOp: 'store'
                     }],
@@ -295,11 +404,10 @@
 
                 this.device.queue.submit([commandEncoder.finish()]);
             } catch (renderErr) {
-                // Ignore transient frame skips on tab switch / resize
+                // Ignore transient frame skips on resize
             }
         }
 
-        /* Matrix Math Helpers */
         perspective(fov, aspect, near, far) {
             const f = 1.0 / Math.tan(fov / 2);
             const nf = 1 / (near - far);
