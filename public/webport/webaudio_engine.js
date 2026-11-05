@@ -14,14 +14,16 @@
             this.initialized = false;
             this.audioBuffers = new Map();
             this.soundManifest = {
-                football_kick: '/assets/game_sounds/football_kick.mp3',
-                football_whistle: '/assets/game_sounds/football_whistle.mp3',
-                football_cheer: '/assets/game_sounds/football_cheer.mp3',
-                bowling_roll: '/assets/game_sounds/bowling_roll.mp3',
-                bowling_strike: '/assets/game_sounds/bowling_strike.mp3',
-                boxing_bell: '/assets/game_sounds/boxing_bell.mp3',
-                boxing_punch: '/assets/game_sounds/boxing_punch.mp3'
+                theme_music: 'assets/game_sounds/kinect_sports_theme.mp3',
+                football_kick: 'assets/game_sounds/football_kick.mp3',
+                football_whistle: 'assets/game_sounds/football_whistle.mp3',
+                football_cheer: 'assets/game_sounds/football_cheer.mp3',
+                bowling_roll: 'assets/game_sounds/bowling_roll.mp3',
+                bowling_strike: 'assets/game_sounds/bowling_strike.mp3',
+                boxing_bell: 'assets/game_sounds/boxing_bell.mp3',
+                boxing_punch: 'assets/game_sounds/boxing_punch.mp3'
             };
+            this.themeSource = null;
         }
 
         async init() {
@@ -52,6 +54,34 @@
                 } catch (e) {
                     // Fallback to procedural synthesis if fetch/decode fails
                 }
+            }
+        }
+
+        playThemeMusic(loop = true) {
+            if (!this.ctx || !this.enabled) return;
+            this.resume();
+            if (this.themeSource) {
+                try { this.themeSource.stop(); } catch(e) {}
+                this.themeSource = null;
+            }
+            const buf = this.audioBuffers.get('theme_music');
+            if (buf) {
+                this.themeSource = this.ctx.createBufferSource();
+                this.themeSource.buffer = buf;
+                this.themeSource.loop = loop;
+                const gain = this.ctx.createGain();
+                gain.gain.value = 0.55;
+                this.themeSource.connect(gain);
+                gain.connect(this.ctx.destination);
+                this.themeSource.start();
+                console.log('[KinectAudio] Playing authentic Rare Xbox 360 title theme!');
+            }
+        }
+
+        stopThemeMusic() {
+            if (this.themeSource) {
+                try { this.themeSource.stop(); } catch(e) {}
+                this.themeSource = null;
             }
         }
 
