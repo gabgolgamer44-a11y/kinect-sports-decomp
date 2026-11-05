@@ -909,6 +909,9 @@
           <button class="sport-btn" id="sportBtn4" onclick="changeSport(4)">🏐 Vôlei</button>
           <button class="sport-btn" id="sportBtn5" onclick="changeSport(5)">🏓 Tênis de Mesa</button>
           <button class="sport-btn" id="sportBtn6" onclick="changeSport(6)">🏃 Atletismo</button>
+                  <button onclick="playCurrentSportTutorial()" style="background: rgba(16, 185, 129, 0.2); border: 1px solid #10b981; color: #10b981; font-weight: 700; padding: 0.45rem 1rem; border-radius: 999px; cursor: pointer; display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem;" title="Assistir vídeo de tutorial autêntico da Rare extraído do jogo">
+          🎬 Tutorial Original Xbox 360
+        </button>
         </div>
 
         <!-- Performance Presets & Dynamic Resolution Scaling (DRS) -->
@@ -1330,7 +1333,7 @@
         <button onclick="closeCutsceneCinema()" style="background: rgba(255,255,255,0.1); border: none; color: #fff; padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer; font-weight: bold;">✕ Fechar</button>
       </div>
       <div style="position: relative; padding-bottom: 56.25%; height: 0; background: #000;">
-        <iframe id="cinemaIframe" src="" style="position: absolute; top:0; left: 0; width: 100%; height: 100%; border: none;" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+        <video id="cinemaVideo" src="assets/videos/game_intro.mp4" controls autoplay style="position: absolute; top:0; left: 0; width: 100%; height: 100%; object-fit: contain;"></video>
       </div>
       <div style="padding: 1rem 1.5rem; background: #0f172a; color: #94a3b8; font-size: 0.85rem; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
         <span>Vídeo Oficial e Trilha Sonora Original da Rareware / Microsoft Game Studios</span>
@@ -1474,21 +1477,34 @@
       if (m) m.style.display = 'none';
     }
 
-    function openCutsceneCinema() {
+        function playCurrentSportTutorial() {
+      const tutorials = {
+        1: 'assets/videos/tutorial_football.mp4',
+        2: 'assets/videos/tutorial_bowling.mp4',
+        3: 'assets/videos/tutorial_boxing.mp4',
+        4: 'assets/videos/tutorial_volleyball.mp4',
+        5: 'assets/videos/tutorial_tabletennis.mp4',
+        6: 'assets/videos/tutorial_track.mp4'
+      };
+      const v = tutorials[gCurrentSport || 1] || 'assets/videos/game_intro.mp4';
+      openCutsceneCinema(v);
+    }
+    function openCutsceneCinema(videoPath) {
       const m = document.getElementById('modalCinema');
-      const iframe = document.getElementById('cinemaIframe');
-      if (m && iframe) {
-        iframe.src = "https://www.youtube.com/embed/PjQvC9E7q-o?autoplay=1&rel=0";
+      const video = document.getElementById('cinemaVideo');
+      if (m && video) {
+        video.src = videoPath || "assets/videos/game_intro.mp4";
         m.style.display = 'flex';
+        video.play().catch(() => {});
         if (gAudio) gAudio.playWhistle();
       }
     }
 
     function closeCutsceneCinema() {
       const m = document.getElementById('modalCinema');
-      const iframe = document.getElementById('cinemaIframe');
-      if (m && iframe) {
-        iframe.src = "";
+      const video = document.getElementById('cinemaVideo');
+      if (m && video) {
+        video.pause();
         m.style.display = 'none';
       }
     }
@@ -1518,6 +1534,15 @@
           gRenderer = new KinectSportsRenderer('kinectGameCanvas');
         }
         gAudio = new KinectSportsAudio();
+        gAudio.init();
+        // Play authentic Xbox 360 Rare theme on first user touch/click/key
+        const startMusicOnce = () => {
+          if (gAudio) gAudio.playThemeMusic(true);
+          window.removeEventListener('click', startMusicOnce);
+          window.removeEventListener('keydown', startMusicOnce);
+        };
+        window.addEventListener('click', startMusicOnce);
+        window.addEventListener('keydown', startMusicOnce);
 
         // Cached DOM references for zero layout thrashing
         const domFpsDisplay = document.getElementById('fpsDrawCallDisplay');
