@@ -283,7 +283,12 @@
                 { id: 'grass', url: 'assets/game_textures/grass_turf.png' },
                 { id: 'target', url: 'assets/game_textures/football_target_gold.png' },
                 { id: 'banner_blue', url: 'assets/game_textures/stadium_banner_blue.png' },
-                { id: 'banner_red', url: 'assets/game_textures/stadium_banner_red.png' }
+                { id: 'banner_red', url: 'assets/game_textures/stadium_banner_red.png' },
+                { id: 'bowling_wood', url: 'assets/game_textures/bowling_wood_floor.png' },
+                { id: 'boxing_ring', url: 'assets/game_textures/boxing_ring_red.png' },
+                { id: 'boxing_crowd', url: 'assets/game_textures/boxing_crowd_arena.png' },
+                { id: 'avatar_jersey', url: 'assets/game_textures/avatar_jersey_blue.png' },
+                { id: 'avatar_skin', url: 'assets/game_textures/avatar_skin_tone.png' }
             ];
 
             for (const item of texList) {
